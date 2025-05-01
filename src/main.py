@@ -1,12 +1,12 @@
 import os
 import typer
 import numpy as np
-from typing import Optional, List, Tuple, Dict
+from typing import List, Dict
 from enum import Enum
 import torch
 import torch.nn as nn
 from transformers import (
-    pipeline, AutoTokenizer, AutoModelForSequenceClassification, 
+    pipeline, AutoTokenizer, 
     RobertaForSequenceClassification, RobertaTokenizer,
     BertForSequenceClassification, BertTokenizer,
     PreTrainedModel, AutoModel, AutoConfig
@@ -14,13 +14,7 @@ from transformers import (
 from docx import Document
 from rich.console import Console
 from rich.table import Table
-from rich import print as rprint
-from pathlib import Path
 import logging
-import time
-import subprocess
-import signal
-import json
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
