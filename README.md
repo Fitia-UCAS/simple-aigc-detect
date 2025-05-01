@@ -2,6 +2,8 @@
 
 一个简单易用的AI生成内容检测工具，可以帮助您识别文档中可能由AI生成的内容。
 
+![AI内容检测示例](./example.jpg)
+
 ## 环境管理
 
 本项目使用 [uv](https://github.com/astral-sh/uv) 作为Python包管理和运行工具。uv是一个快速的Python包安装器和解析器，由Rust编写，可大幅提升依赖项安装速度。
