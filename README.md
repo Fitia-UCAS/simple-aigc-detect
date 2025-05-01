@@ -2,6 +2,10 @@
 
 一个简单易用的AI生成内容检测工具，可以帮助您识别文档中可能由AI生成的内容。
 
+## 环境管理
+
+本项目使用 [uv](https://github.com/astral-sh/uv) 作为Python包管理和运行工具。uv是一个快速的Python包安装器和解析器，由Rust编写，可大幅提升依赖项安装速度。
+
 ## 功能特点
 
 - 支持中文和英文内容的AIGC检测
@@ -10,19 +14,12 @@
 - 支持多种预训练模型选择
 - 可自定义AI内容判定阈值
 
-## 安装方法
-
-```bash
-# 使用uv安装
-uv run ./simple-aigc-detect/main.py
-```
-
 ## 使用方法
 
 基本用法：
 
 ```bash
-uv run ./simple-aigc-detect/main.py 文件路径 [选项]
+uv run .\src\main.py 文件路径 [选项]
 ```
 
 ### 选项参数
@@ -35,25 +32,25 @@ uv run ./simple-aigc-detect/main.py 文件路径 [选项]
 检测单个文件：
 
 ```bash
-uv run ./simple-aigc-detect/main.py example.txt
+uv run .\src\main.py .\example.txt
 ```
 
 检测多个文件：
 
 ```bash
-uv run ./simple-aigc-detect/main.py file1.txt file2.docx
+uv run .\src\main.py file1.txt file2.docx
 ```
 
 使用英文检测模型：
 
 ```bash
-uv run ./simple-aigc-detect/main.py example.txt --model english
+uv run .\src\main.py .\example.txt --model english
 ```
 
 自定义判定阈值：
 
 ```bash
-uv run ./simple-aigc-detect/main.py example.txt --threshold 0.8
+uv run .\src\main.py .\example.txt --threshold 0.8
 ```
 
 ## 支持的模型
