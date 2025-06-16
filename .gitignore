@@ -13,6 +13,8 @@ wheels/
 # Model and utility files
 AIGC_text_detector/
 desklib_detector/
-/res_detect/
+res_detect/
+to_detect/
+
 utils/contents.txt
 utils/contents.py
