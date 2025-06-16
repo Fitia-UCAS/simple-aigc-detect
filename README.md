@@ -2,8 +2,6 @@
 
 一个简单易用的AI生成内容检测工具，可以帮助您识别文档中可能由AI生成的内容。
 
-![AI内容检测示例](./example.jpg)
-
 ## 环境管理
 
 本项目使用 [uv](https://github.com/astral-sh/uv) 作为Python包管理和运行工具。uv是一个快速的Python包安装器和解析器，由Rust编写，可大幅提升依赖项安装速度。
@@ -44,46 +42,7 @@ uv pip install -e .
 
 ## 使用方法
 
-### 使用uv运行
-
-```bash
-uv run .\src\main.py 文件路径 [选项]
-```
-
-### 选项参数
-
-- `-m, --model`: 选择检测模型类型，可选值：
-  - `multi`（默认）：使用多模型组合检测
-  - `chinese`：仅使用中文AIGC检测模型
-  - `english`：仅使用英文AIGC检测模型
-  - `desklib`：仅使用Desklib通用检测模型
-- `-t, --threshold`: AI内容判定阈值，默认为0.7（大于此值则判定为AI生成）
-
-### 使用示例
-
-检测单个文件（使用多模型检测）：
-
-```bash
-uv run .\src\main.py .\example.txt
-```
-
-检测多个文件：
-
-```bash
-uv run .\src\main.py file1.txt file2.docx
-```
-
-使用英文检测模型：
-
-```bash
-uv run .\src\main.py .\example.txt --model english
-```
-
-自定义判定阈值：
-
-```bash
-uv run .\src\main.py .\example.txt --threshold 0.8
-```
+运行 main.py 文件，检测 to_detect 文件夹下所有符合的文件，输出报告到终端以及 res_detect 文件夹下。
 
 ## 支持的模型
 

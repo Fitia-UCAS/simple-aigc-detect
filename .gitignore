@@ -1,14 +1,18 @@
-# Python-generated files
+# Python generated files
 __pycache__/
-*.py[oc]
+*.pyc
+*.pyo
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
 
 # Virtual environments
-.venv
+.venv/
 
-# Models
-AIGC_text_detector/*
-desklib_detector/*
+# Model and utility files
+AIGC_text_detector/
+desklib_detector/
+/res_detect/
+utils/contents.txt
+utils/contents.py

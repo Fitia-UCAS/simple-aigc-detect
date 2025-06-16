@@ -1,0 +1,661 @@
+% \documentclass{cumcmthesis}
+\documentclass[withoutpreface,bwprint]{cumcmthesis} % 去掉封面与编号页，电子版提交时使用
+
+% 题目
+\title{城市垃圾分类运输的路径优化与调度}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+
+  随着城市化进程的加速，城市垃圾产量激增，垃圾分类运输成为环境治理的关键环节。本文针对2025年第十届数维杯大学生数学建模挑战赛B题，通过\textbf{数学建模}与\textbf{优化算法}，系统分析城市垃圾分类运输的路径优化与调度问题，提出兼顾运输成本与碳排放的综合解决方案。
+  
+  \textbf{针对问题一}，以单一车辆类型（厨余垃圾专用车）的最小化每日总行驶距离为目标，构建\textbf{车辆路径问题（VRP）模型}\cite{Mašek2024}。基于\textbf{整数线性规划}，结合车辆载重约束（$Q=5$吨）和多趟运输特性，设计\textbf{克拉克-赖特节约算法}与\textbf{模拟退火算法}的混合求解策略。通过\textbf{Python}与\textbf{NumPy}实现数据处理与路径优化，针对30个收集点（附件1数据）计算最优车辆数量与运输路径，并分析算法时间复杂度为$O(n^2\log n)$，验证模型的高效性。
+  
+  \textbf{针对问题二}，扩展至多车辆协同运输，考虑四类垃圾（厨余、可回收、有害、其他）及专用车辆的载重（$Q_k$）、容积（$V_k$）与成本（$C_k$）约束（附件2、3数据），构建以最小化总运输成本为目标的\textbf{多类型VRP模型}。采用\textbf{遗传算法}\cite{Nowakowski2018}优化车辆调度与路径分配，通过迭代搜索满足类型约束的解空间，求解30个收集点的协同运输方案。若引入每日最大行驶时间约束，模型通过添加时间窗口限制调整路径，确保任务可行性，分析时间约束对路径拆分的影响。
+  
+  \textbf{针对问题三}，引入中转站选址与时间窗口，构建\textbf{选址-路径-碳排放综合优化模型}，目标为最小化运输成本与中转站建设成本之和（附件4数据）。设计两阶段求解算法：第一阶段通过\textbf{K均值聚类}确定中转站选址与收集点分配；第二阶段采用\textbf{禁忌搜索算法}\cite{Rabbani2017}优化各中转站的车辆路径，考虑存储容量（$S_k$）与时间窗口（$[a_j, b_j]$）。针对非对称路网（附件5数据），调整距离矩阵并分析复杂度差异，验证模型在单行道与禁行时段下的适应性。碳排放通过公式$E=\sum_k \sum_{\text{车辆}}(d_{t,k} \cdot \alpha_k + \beta_k \cdot \sum_i w_{i,k,t})$量化，确保环境效益。
+  
+  通过\textbf{Python}实现的\textbf{数值模拟}与可视化（包括路径图、中转站分配图和碳排放分布图），模型结果展示了优化方案在成本、效率与环境效益间的平衡，为城市垃圾分类运输管理提供了科学的决策支持，具有重要的城市管理与可持续发展价值。
+  
+  \keywords{车辆路径优化\quad 多类型车辆调度\quad 中转站选址\quad 碳排放控制}
+\end{abstract}
+
+%\tableofcontents
+
+%\newpage
+
+\section{问题重述}
+
+\subsection{问题背景}
+随着城市化进程的加速，城市生活垃圾产量持续增长，给环境治理和可持续发展带来巨大挑战。2023年，我国城市垃圾总量已达4亿吨，逼近处理能力极限。垃圾分类运输作为城市垃圾管理的关键环节，需综合考虑不同垃圾类型的收集需求、运输车辆的载重与容积限制、中转站的处理能力及时间窗口约束，同时兼顾运输成本和碳排放控制。如何通过数学建模优化垃圾分类运输路径与调度，提升效率并降低成本与环境影响，是亟待解决的重要问题。
+
+\subsection{问题重述}
+城市垃圾分类运输涉及多个垃圾收集点、专用运输车辆及中转站的协同优化。每个收集点每日产生多种类型的垃圾（厨余垃圾、可回收物、有害垃圾、其他垃圾），需由对应专用车辆运输，车辆具有特定的载重和成本参数。运输过程需从垃圾处理厂出发，完成收集后返回处理厂，并可能涉及中转站进行临时存储与分拣，同时满足时间窗口和碳排放约束。
+
+\textbf{问题一：} 在单一车辆类型（厨余垃圾专用车辆）场景下，针对$n$个收集点的坐标、垃圾产生量及车辆载重限制，建立以最小化总行驶距离为目标的路径优化模型，确定车辆数量、运输路径及任务分配，并基于$n=30$的给定数据设计算法求解，分析时间复杂度及模型局限性，提出改进方向。
+
+\textbf{问题二：} 扩展至多车辆类型（对应四类垃圾），各类型车辆具有不同载重、容积及单位距离成本，收集点产生多种垃圾。建立以最小化总运输成本为目标的协同运输模型，扩展问题一的算法求解基于附件数据的优化方案，分析约束条件变化，并探讨加入每日最大行驶时间约束后模型的修改及对路径规划的影响。
+
+\textbf{问题三：} 在引入$m$个候选中转站（具有固定时间窗口和存储容量）及碳排放约束的场景下，建立综合优化模型，目标为最小化运输成本与中转站建设成本之和。设计两阶段算法：第一阶段确定中转站选址及收集点分配，第二阶段优化各类型车辆路径，阐述阶段间协同机制，并分析非对称路网（如单行道、禁行时段）对距离矩阵和模型的调整及复杂度影响。
+
+\section{问题分析}
+
+\subsection{问题一的分析}
+问题一要求针对单一类型垃圾（厨余垃圾）构建路径优化模型，以最小化每日总行驶距离为核心目标，同时确定车辆数量、路径及任务分配。首先，需根据收集点的坐标和垃圾产生量计算各点间的欧氏距离，构建距离矩阵；接着，结合车辆载重限制，设计模型确保每辆车装载量不超过容量，同时每个收集点被访问一次；然后，考虑到车辆可多次往返，需将每次行程视为独立路线，优化车辆分配以减少总距离。由于问题规模为30个收集点，直接求解精确解复杂度较高，可采用启发式算法（如Clarke-Wright节约算法）生成初始解并迭代优化。算法求解需分析时间复杂度，确保计算效率。此外，模型需考虑实际场景的局限性，如忽略交通拥堵和动态速度，进而提出改进方向以提升实用性。
+
+\subsection{问题二的分析}
+问题二扩展至多类型垃圾（厨余垃圾、可回收物、有害垃圾、其他垃圾），要求以最小化总运输成本为目标，构建多车辆协同运输模型。首先，需为每种垃圾类型分别构建子问题，基于问题一的模型，引入不同车辆的载重、容积和单位距离成本参数；接着，针对每个收集点多种垃圾的需求，设计分配机制确保每种垃圾由专用车辆处理；然后，通过扩展Clarke-Wright算法，分别优化各类型垃圾的路径，同时满足容量约束。由于新增时间约束的子问题，需引入时间变量和行驶时间限制，调整算法以检查路线合并时的可行性。求解时需分析约束条件的变化对模型复杂度的影响，并通过示例探讨时间约束如何导致任务拆分或车辆增加。
+
+\subsection{问题三的分析}
+问题三进一步引入中转站选址、时间窗口和碳排放约束，要求综合优化运输成本与中转站建设成本。首先，需通过线性规划确定中转站选址及收集点分配，考虑建设成本和垃圾存储容量；接着，基于选址结果，为每种垃圾类型优化车辆路径，结合时间窗口约束确保车辆在规定时间内到达中转站；然后，引入碳排放目标，构建多目标优化模型，平衡成本与环境影响。由于非对称路网（如单行道和禁行时段）的影响，需调整距离矩阵，增加模型复杂性。求解采用两阶段算法：第一阶段优化选址，第二阶段优化路径，需明确两阶段的协同机制，如选址对路径长度的影响。复杂度分析需对比对称与非对称路网的计算差异。
+
+\section{模型假设}
+
+为简化问题分析并确保模型的可操作性，在问题一、问题二和问题三的建模过程中，提出以下关键假设：
+
+1. \textbf{垃圾产生量稳定}：假设每个收集点每日产生的垃圾量（包括各类垃圾的总量和分类型量）固定且已知，基于附件数据，不受时间或外部因素影响。
+
+2. \textbf{车辆运行条件一致}：所有车辆的行驶速度固定为40 km/h，不考虑道路类型、天气或交通拥堵等因素；车辆的载重和容积限制严格遵循附件2的参数。
+
+3. \textbf{距离计算简化}：问题一和问题二中，点间距离采用欧氏距离计算，忽略实际路网复杂性；问题三中，考虑非对称路网的单行道和禁行时段调整，其余距离仍基于欧氏距离。
+
+4. \textbf{时间窗口严格遵守}：垃圾处理厂和中转站的运营时间窗口（6:00–18:00及附件4指定时间）必须严格遵守，车辆需在规定时间内到达和离开。
+
+5. \textbf{碳排放线性相关}：碳排放量与车辆行驶距离和载重呈线性关系，严格遵循问题三给出的公式，排放系数固定不变。
+
+6. \textbf{忽略装卸时间}：假设车辆在收集点和中转站的装卸时间可忽略，仅考虑行驶时间对路径规划的影响。
+
+\section{符号说明}
+
+{\normalsize
+\begin{longtable}{p{60pt}<{\centering}|p{60pt}<{\centering}p{240pt}<{\raggedright}}
+  \hline
+  \rowcolor{gray!20}  
+  序号 & 符号 & 符号说明 \\
+  \hline
+  \endfirsthead
+  \rowcolor{gray!20}  
+  \hline
+  \rowcolor{gray!20}  
+  序号 & 符号 & 符号说明 \\
+  \hline
+  \endhead
+  \hline
+  \multicolumn{3}{r}{\textit{续下页}} \\
+  \endfoot
+  \hline
+  \caption{符号与说明} \label{symbol_all} \\
+  \endlastfoot
+  1 & $V$ & 地点集合，包含垃圾处理厂、收集点和中转站 \\
+  2 & $K$ & 车辆集合或车辆类型集合，包含不同垃圾类型的专用车辆 \\
+  3 & $R_k$ & 车辆类型 $k$ 的路线集合 \\
+  4 & $d_{ij}$ & 点 $i$ 到点 $j$ 的距离（公里） \\
+  5 & $w_i$ & 点 $i$ 的厨余垃圾需求量（吨） \\
+  6 & $W_{i,k}$ & 点 $i$ 的垃圾类型 $k$ 需求量（吨） \\
+  7 & $Q$ & 车辆最大载重（吨） \\
+  8 & $Q_k$ & 车辆类型 $k$ 的最大载重（吨） \\
+  9 & $C_k$ & 车辆类型 $k$ 的单位距离成本（元/公里） \\
+  10 & $V_k$ & 车辆类型 $k$ 的容积容量（立方米） \\
+  11 & $\alpha_k$ & 车辆类型 $k$ 的距离碳排放系数（千克/公里） \\
+  12 & $\beta_k$ & 车辆类型 $k$ 的载重碳排放系数（千克/吨） \\
+  13 & $T_j$ & 中转站 $j$ 的每日摊销建设成本（元） \\
+  14 & $S_{j,k}$ & 中转站 $j$ 对垃圾类型 $k$ 的存储容量（吨） \\
+  15 & $[a_j, b_j]$ & 中转站 $j$ 的时间窗口（分钟） \\
+  16 & $v$ & 车辆行驶速度（公里/小时） \\
+  17 & $T_{\max}$ & 车辆每日最大行驶时间（小时） \\
+  18 & $\omega$ & 碳排放成本权重（元/千克） \\
+  19 & $x_{ijk}$ & 二进制变量，表示车辆 $k$ 从点 $i$ 到点 $j$ 行驶（1 为行驶，0 为不行驶） \\
+  20 & $x_{ijk}$ & 二进制变量，表示点 $i$ 的垃圾类型 $k$ 分配至中转站 $j$ 或处理厂（1 为分配，0 为不分配） \\
+  21 & $y_{ik}$ & 二进制变量，表示车辆 $k$ 服务点 $i$（1 为服务，0 为不服务） \\
+  22 & $x_{ijk}^r$ & 二进制变量，表示路线 $r$（类型 $k$）从点 $i$ 到点 $j$ 行驶（1 为行驶，0 为不行驶） \\
+  23 & $y_{ik}^r$ & 二进制变量，表示路线 $r$（类型 $k$）服务点 $i$（1 为服务，0 为不服务） \\
+  24 & $z_{ijk}^r$ & 二进制变量，表示路线 $r$（类型 $k$）从点 $i$ 到点 $j$ 行驶（1 为行驶，0 为不行驶） \\
+  25 & $u_{ik}^r$ & 二进制变量，表示路线 $r$（类型 $k$）服务点 $i$（1 为服务，0 为不服务） \\
+  26 & $u_i$ & 辅助变量，表示点 $i$ 的累计负载（吨） \\
+  27 & $u_{ik}^r$ & 辅助变量，表示路线 $r$（类型 $k$）在点 $i$ 的累计负载（吨） \\
+  28 & $l_{ik}^r$ & 连续变量，表示路线 $r$（类型 $k$）在点 $i$ 的累计负载（吨） \\
+  29 & $t_r$ & 路线 $r$ 的行驶时间（小时） \\
+  30 & $t_{jk}^r$ & 连续变量，表示路线 $r$（类型 $k$）到达点 $j$ 的时间（分钟） \\
+  31 & $s_{ij}$ & 节约值，用于路径优化算法 \\
+  32 & $y_j$ & 二进制变量，表示中转站 $j$ 是否被选中（1 为选中，0 为不选中） \\
+  33 & $E$ & 总碳排放量（千克） \\
+  34 & $M$ & 大常数，用于线性化时间约束 \\
+  \hline
+\end{longtable}
+}
+
+\section{模型建立与求解}
+
+\subsection{问题一：单一车辆类型下的垃圾运输路径优化}
+
+\subsubsection{解题思路}
+针对单一类型垃圾（厨余垃圾）的运输优化，需构建车辆路径模型以最小化总行驶距离。核心步骤包括：首先，根据收集点坐标计算欧氏距离，构造距离矩阵；然后，结合车辆载重约束，设计模型确保每个收集点被访问一次且装载量不超过容量；接着，允许车辆多次往返，将每次行程视为独立路线；最后，采用Clarke-Wright节约算法生成初始解并优化路径分配，同时分析算法时间复杂度以验证效率。
+
+\subsubsection{模型建立}
+\noindent\textbf{1. 集合与参数}
+
+定义地点集合$V = \{0, 1, \dots, n\}$，其中$0$为垃圾处理厂，其余为收集点；车辆集合为$K$。参数包括：
+\begin{itemize}
+  \item 点$i$到点$j$的距离$d_{ij}$，由欧氏距离公式计算：
+    \begin{equation}
+      d_{ij} = \sqrt{(x_i - x_j)^2 + (y_i - y_j)^2}, \quad \forall i, j \in V
+    \end{equation}
+  \item 点$i$的厨余垃圾需求量$w_i$（吨），其中$w_0 = 0$。
+  \item 车辆最大载重$Q = 5$吨。
+\end{itemize}
+
+\noindent\textbf{2. 决策变量}
+
+\begin{itemize}
+  \item $x_{ijk}$：二进制变量，若车辆$k$从点$i$到点$j$行驶，则$x_{ijk} = 1$，否则$x_{ijk} = 0$。
+  \item $y_{ik}$：二进制变量，若车辆$k$服务点$i$，则$y_{ik} = 1$，否则$y_{ik} = 0$。
+  \item $u_i$：辅助变量，表示点$i$的累计负载，用于消除子回路。
+\end{itemize}
+
+\noindent\textbf{3. 目标函数}
+
+最小化总行驶距离：
+\begin{equation}
+  \min \sum_{k \in K} \sum_{i \in V} \sum_{j \in V} d_{ij} \cdot x_{ijk}
+\end{equation}
+
+\noindent\textbf{4. 约束条件}
+
+\begin{enumerate}
+  \item 每个收集点恰好被服务一次：
+    \begin{equation}
+      \sum_{k \in K} y_{ik} = 1, \quad \forall i \in V \setminus \{0\}
+    \end{equation}
+  \item 每辆车从处理厂出发：
+    \begin{equation}
+      \sum_{j \in V} x_{0jk} = 1, \quad \forall k \in K
+    \end{equation}
+  \item 每辆车返回处理厂：
+    \begin{equation}
+      \sum_{i \in V} x_{i0k} = 1, \quad \forall k \in K
+    \end{equation}
+  \item 流量守恒：
+    \begin{equation}
+      \sum_{i \in V} x_{ijk} - \sum_{i \in V} x_{jik} = 0, \quad \forall j \in V \setminus \{0\}, \forall k \in K
+    \end{equation}
+  \item 车辆载重约束：
+    \begin{equation}
+      \sum_{i \in V} w_i \cdot y_{ik} \leq Q, \quad \forall k \in K
+    \end{equation}
+  \item 子回路消除（MTZ形式）：
+    \begin{equation}
+      u_i - u_j + Q \cdot x_{ijk} \leq Q - w_j, \quad \forall i, j \in V \setminus \{0\}, i \neq j, \forall k \in K
+    \end{equation}
+    其中$u_i \geq w_i$，$u_i \leq Q$。
+\end{enumerate}
+
+\subsubsection{求解步骤}
+\noindent\textbf{Step 1. 数据加载与预处理}
+
+加载附件1的30个收集点坐标$(x_i, y_i)$和附件3的厨余垃圾需求量$w_{i,1}$，计算欧氏距离矩阵$d_{ij}$，设置处理厂需求$w_0 = 0$。
+
+\noindent\textbf{Step 2. Clarke-Wright算法初始化}
+
+为每个收集点$i$（$w_{i,1} > 0$）生成单点往返路线$0 \to i \to 0$。若需求$w_{i,1}$超过$Q$，拆分为多条路线，每条装载量不超过$Q$。
+
+\noindent\textbf{Step 3. 计算节约值与路线合并}
+
+计算节约值：
+\begin{equation}
+  s_{ij} = d_{0i} + d_{0j} - d_{ij}, \quad \forall i, j \in V \setminus \{0\}
+\end{equation}
+按$s_{ij}$降序排序，逐条检查可合并的路线对$(i, j)$，确保合并后总需求量不超过$Q$，更新路线和需求。
+
+\noindent\textbf{Step 4. 车辆分配与时间约束}
+
+将合并后的路线分配给车辆，计算每条路线行驶时间（距离除以40 km/h），确保车辆总时间不超过12小时。若超限，分配新车辆。
+
+\noindent\textbf{Step 5. 结果保存与可视化}
+
+保存优化后的路线、装载量和行驶时间，绘制路径图，标注处理厂（红星）和收集点（蓝点），验证路径分布。
+
+\subsubsection{求解结果}
+基于附件数据（$n=30$，$Q=5$吨），Clarke-Wright算法求解结果如下：
+\begin{enumerate}
+  \item 总行驶距离：约624.21公里。
+  \item 车辆数量：3辆。
+  \item 路线分配：详见附录A，包含每辆车的路线、装载量和行驶时间。
+  \item 可视化：路线图（图~\ref{fig:p1_routes}）显示车辆路径覆盖所有收集点，无明显重叠，起点和终点均为处理厂。
+\end{enumerate}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{problem-solving-code/problem1/figures/routes_plot.pdf}
+  \caption{问题一优化后的车辆路线图}
+  \label{fig:p1_routes}
+\end{figure}
+
+\subsubsection{分析与讨论}
+\begin{enumerate}
+  \item \textbf{优化效果}：总行驶距离624.21公里表明路径规划高效，3辆车完成任务，行驶时间范围3.37至6.84小时，符合12小时约束。
+  \item \textbf{时间复杂度}：节约值计算复杂度为$O(n^2)$，排序为$O(n^2 \log n)$，路线合并最坏为$O(n^2)$，总体为$O(n^2 \log n)$。对于$n=30$，算法运行高效。
+  \item \textbf{局限性}：模型假设固定速度（40 km/h），未考虑交通拥堵或动态速度；忽略收集点服务时间窗，可能与实际调度不符。
+  \item \textbf{改进方向}：引入时间变量$t_{ik}$和收集点时间窗$[a_i, b_i]$，添加约束：
+    \begin{equation}
+      a_i \leq t_{ik} \leq b_i, \quad \forall i \in V \setminus \{0\}, \forall k \in K
+    \end{equation}
+    以提升模型的实际适用性。
+\end{enumerate}
+
+\subsection{问题二：多车辆类型协同运输优化}
+
+\subsubsection{解题思路}
+针对四类垃圾（厨余垃圾、可回收物、有害垃圾、其他垃圾）的运输优化，需构建多车辆协同运输模型，以最小化每日总运输成本为核心目标。核心步骤包括：首先，基于问题一的单类型垃圾路径优化模型，扩展为每种垃圾类型独立优化；然后，引入不同车辆类型的载重、单位距离成本参数，处理每个收集点多种垃圾的需求；接着，扩展Clarke-Wright节约算法，分别优化各类型垃圾的运输路径，同时满足载重约束；最后，引入每日最大行驶时间约束，分析其对路径规划的影响，验证算法的有效性和计算效率。
+
+\subsubsection{模型建立}
+\noindent\textbf{1. 集合与参数}
+
+定义地点集合 $V = \{0, 1, \dots, n\}$，其中 $0$ 为垃圾处理厂，其余为收集点；车辆类型集合 $K = \{1, 2, 3, 4\}$，分别对应厨余垃圾、可回收物、有害垃圾、其他垃圾；每种类型 $k$ 的路线集合为 $R_k$。参数包括：
+\begin{itemize}
+  \item 点 $i$ 到点 $j$ 的距离 $d_{ij}$，由欧氏距离公式计算：
+    \begin{equation}
+      d_{ij} = \sqrt{(x_i - x_j)^2 + (y_i - y_j)^2}, \quad \forall i, j \in V
+    \end{equation}
+  \item 点 $i$ 的垃圾类型 $k$ 需求量 $W_{i,k}$（吨），其中 $W_{0,k} = 0$，满足 $\sum_{k \in K} W_{i,k} = W_i$。
+  \item 车辆类型 $k$ 的最大载重 $Q_k$（吨），单位距离成本 $C_k$（元/km），来源于附件2。
+  \item 车辆行驶速度 $v = 40$ km/h，最大行驶时间 $T_{\max} = 12$ 小时。
+\end{itemize}
+
+\noindent\textbf{2. 决策变量}
+
+\begin{itemize}
+  \item $x_{ijk}^r$：二进制变量，若路线 $r$（类型 $k$）从点 $i$ 到点 $j$ 行驶，则 $x_{ijk}^r = 1$，否则 $x_{ijk}^r = 0$。
+  \item $y_{ik}^r$：二进制变量，若路线 $r$（类型 $k$）服务点 $i$，则 $y_{ik}^r = 1$，否则 $y_{ik}^r = 0$。
+  \item $u_{ik}^r$：辅助变量，表示路线 $r$（类型 $k$）在点 $i$ 的累计负载，用于消除子回路。
+\end{itemize}
+
+\noindent\textbf{3. 目标函数}
+
+最小化每日总运输成本，即各类型车辆行驶距离与单位成本的乘积之和：
+\begin{equation}
+  \min \sum_{k \in K} \sum_{r \in R_k} \sum_{i \in V} \sum_{j \in V} C_k \cdot d_{ij} \cdot x_{ijk}^r
+\end{equation}
+
+\noindent\textbf{4. 约束条件}
+
+\begin{enumerate}
+  \item 每种垃圾类型在每个收集点恰好被服务一次：
+    \begin{equation}
+      \sum_{r \in R_k} y_{ik}^r = 1, \quad \forall i \in V \setminus \{0\}, \forall k \in K
+    \end{equation}
+  \item 每条路线从处理厂出发：
+    \begin{equation}
+      \sum_{j \in V} x_{0jk}^r = 1, \quad \forall k \in K, \forall r \in R_k
+    \end{equation}
+  \item 每条路线返回处理厂：
+    \begin{equation}
+      \sum_{i \in V} x_{i0k}^r = 1, \quad \forall k \in K, \forall r \in R_k
+    \end{equation}
+  \item 流量守恒：
+    \begin{equation}
+      \sum_{i \in V} x_{ijk}^r - \sum_{i \in V} x_{jik}^r = 0, \quad \forall j \in V \setminus \{0\}, \forall k \in K, \forall r \in R_k
+    \end{equation}
+  \item 载重约束：
+    \begin{equation}
+      \sum_{i \in V} W_{i,k} \cdot y_{ik}^r \leq Q_k, \quad \forall k \in K, \forall r \in R_k
+    \end{equation}
+  \item 子回路消除（MTZ形式）：
+    \begin{equation}
+      u_{ik}^r - u_{jk}^r + Q_k \cdot x_{ijk}^r \leq Q_k - W_{j,k}, \quad \forall i, j \in V \setminus \{0\}, i \neq j, \forall k \in K, \forall r \in R_k
+    \end{equation}
+    其中 $u_{ik}^r \geq W_{i,k}$，$u_{ik}^r \leq Q_k$。
+  \item 时间约束：
+    \begin{equation}
+      t_r = \sum_{i \in V} \sum_{j \in V} \frac{d_{ij}}{v} \cdot x_{ijk}^r \leq T_{\max}, \quad \forall r \in R_k, \forall k \in K
+    \end{equation}
+\end{enumerate}
+
+\subsubsection{求解步骤}
+\noindent\textbf{Step 1. 数据加载与预处理}
+
+加载附件1的30个收集点坐标 $(x_i, y_i)$，附件2的车辆参数（$Q_k$、$C_k$），附件3的各类型垃圾需求量 $W_{i,k}$。计算欧氏距离矩阵 $d_{ij}$，初始化处理厂需求 $W_{0,k} = 0$。
+
+\noindent\textbf{Step 2. 扩展Clarke-Wright算法}
+
+为每种垃圾类型 $k$ 独立运行Clarke-Wright节约算法：
+\begin{enumerate}
+  \item 初始化单点往返路线 $0 \to i \to 0$（$i$ 为 $W_{i,k} > 0$ 的收集点）。若 $W_{i,k} > Q_k$，拆分为多条路线，每条装载量不超过 $Q_k$。
+  \item 计算节约值：
+    \begin{equation}
+      s_{ij} = d_{0i} + d_{0j} - d_{ij}, \quad \forall i, j \in V \setminus \{0\}, W_{i,k}, W_{j,k} > 0
+    \end{equation}
+  \item 按 $s_{ij}$ 降序排序，检查可合并的路线对 $(i, j)$，确保合并后总需求量 $\sum W_{i,k} \leq Q_k$，更新路线。
+\end{enumerate}
+
+\noindent\textbf{Step 3. 时间约束检查}
+
+在路线合并时，计算合并后路线行驶时间 $t_r = \sum_{(i,j) \in r} d_{ij} / v$。若 $t_r > T_{\max}$，禁止合并，分配新车辆或拆分任务。
+
+\noindent\textbf{Step 4. 成本计算与可视化}
+
+根据 $C_k$ 计算每种垃圾类型的运输成本，保存优化后的路线、装载量和行驶距离。绘制各类型垃圾的路径图，标注处理厂（红星）和收集点（蓝点）。
+
+\subsubsection{求解结果}
+基于附件数据（$n=30$，$Q_k$ 和 $C_k$ 见附件2），优化结果如下：
+\begin{enumerate}
+  \item 总运输成本：约2936.14元。
+  \item 各类型垃圾优化结果：
+    \begin{itemize}
+      \item 厨余垃圾（$k=1$）：6辆车，总行驶距离450.10公里，成本1125.26元。
+      \item 可回收物（$k=2$）：2辆车，总行驶距离218.33公里，成本436.65元。
+      \item 有害垃圾（$k=3$）：1辆车，总行驶距离180.73公里，成本903.63元。
+      \item 其他垃圾（$k=4$）：3辆车，总行驶距离261.45公里，成本470.60元。
+    \end{itemize}
+  \item 路线分配：详见附录A，包含每辆车的路线、装载量和行驶距离。
+  \item 可视化：路径图（图~\ref{fig:p2_routes}）显示各类型垃圾的路线分布，路径无明显重叠，起点和终点均为处理厂。
+\end{enumerate}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{problem-solving-code/problem2/figures/routes_厨余垃圾.pdf}
+  \caption{问题二厨余垃圾优化路径图}
+  \label{fig:p2_routes}
+\end{figure}
+
+\subsubsection{分析与讨论}
+\begin{enumerate}
+  \item \textbf{优化效果}：总运输成本2936.14元，成本分配合理，厨余垃圾因需求量大（总计37.23吨）需较多车辆和距离，而有害垃圾需求量小（总计2.31吨）仅需1辆车，反映模型对不同类型垃圾的适应性。
+  \item \textbf{时间复杂度}：每种垃圾类型运行Clarke-Wright算法，复杂度为 $O(n^2 \log n)$，$n=30$；四种类型总复杂度为 $O(4 \cdot n^2 \log n)$，计算效率适中。
+  \item \textbf{时间约束影响}：12小时时间约束导致部分长距离路线拆分，例如厨余垃圾从问题一的3辆车增至6辆车，行驶时间范围5.00至11.51小时，均满足约束。
+  \item \textbf{局限性}：模型未考虑容积约束 $V_k$，因缺少垃圾密度数据；固定速度假设忽略了交通拥堵影响，可能高估路径可行性。
+\end{enumerate}
+
+\subsection{问题三：含中转站选址与时间窗口的综合优化}
+
+\subsubsection{解题思路}
+针对包含中转站选址、时间窗口和碳排放约束的综合优化问题，需构建多目标数学模型，以最小化运输成本、中转站建设成本及碳排放的加权和为核心目标。问题求解分为两个阶段：第一阶段通过线性规划确定中转站选址及收集点分配，考虑建设成本和存储容量约束；第二阶段基于选址结果，采用NSGA-II多目标优化算法为每种垃圾类型优化车辆路径，满足时间窗口、载重和中转站容量约束，同时平衡成本与碳排放。非对称路网（如单行道和禁行时段）需调整距离矩阵，分析其对复杂度的影响。通过可视化Pareto前沿和路径图，验证优化效果并分析协同机制。
+
+\subsubsection{模型建立}
+
+\noindent\textbf{1. 集合与参数}
+
+定义地点集合 $V = \{0, 1, \dots, n, n+1, \dots, n+m\}$，其中 $0$ 表示垃圾处理厂，$1$ 至 $n$ 为收集点，$n+1$ 至 $n+m$ 为中转站；车辆类型集合 $K = \{1, 2, 3, 4\}$，分别对应厨余垃圾、可回收物、有害垃圾、其他垃圾；每种类型 $k$ 的路线集合为 $R_k$。参数包括：
+\begin{itemize}
+  \item $d_{ij}$：点 $i$ 到点 $j$ 的距离（公里），基于欧氏距离计算，部分路段按附件5非对称调整：
+    \begin{equation}
+      d_{ij} = \sqrt{(x_i - x_j)^2 + (y_i - y_j)^2}, \quad \forall i, j \in V \text{（未调整路段）}
+    \end{equation}
+  \item $W_{i,k}$：点 $i$ 的垃圾类型 $k$ 需求量（吨），$W_{0,k} = 0$，满足 $\sum_{k \in K} W_{i,k} = W_i$。
+  \item $Q_k$：车辆类型 $k$ 的最大载重（吨），来源于附件2。
+  \item $C_k$：车辆类型 $k$ 的单位距离成本（元/公里），来源于附件2。
+  \item $\alpha_k$：车辆类型 $k$ 的距离碳排放系数（千克/公里）。
+  \item $\beta_k$：车辆类型 $k$ 的载重碳排放系数（千克/吨）。
+  \item $T_j$：中转站 $j$ 的每日摊销建设成本（元），由附件4的建设成本除以10年总天数。
+  \item $S_{j,k}$：中转站 $j$ 对垃圾类型 $k$ 的存储容量（吨）。
+  \item $[a_j, b_j]$：中转站 $j$ 的时间窗口（分钟），处理厂时间窗口为 $[360, 1080]$（6:00–18:00）。
+  \item $v$：车辆行驶速度，固定为 $40$ 公里/小时。
+  \item $\omega$：碳排放成本权重，设为 $1$ 元/千克。
+\end{itemize}
+
+\noindent\textbf{2. 决策变量}
+
+\begin{itemize}
+  \item $y_j$：二进制变量，若中转站 $j$ 被选中，则 $y_j = 1$，否则 $y_j = 0$，$\forall j \in \{n+1, \dots, n+m\}$。
+  \item $x_{ijk}$：二进制变量，若点 $i$ 的垃圾类型 $k$ 分配至中转站 $j$（或处理厂），则 $x_{ijk} = 1$，否则 $x_{ijk} = 0$。
+  \item $z_{ijk}^r$：二进制变量，若路线 $r$（类型 $k$）从点 $i$ 到点 $j$ 行驶，则 $z_{ijk}^r = 1$，否则 $z_{ijk}^r = 0$。
+  \item $u_{ik}^r$：二进制变量，若路线 $r$（类型 $k$）服务点 $i$，则 $u_{ik}^r = 1$，否则 $u_{ik}^r = 0$。
+  \item $t_{jk}^r$：连续变量，表示路线 $r$（类型 $k$）到达点 $j$ 的时间（分钟）。
+  \item $l_{ik}^r$：连续变量，表示路线 $r$（类型 $k$）在点 $i$ 的累计负载（吨）。
+\end{itemize}
+
+\noindent\textbf{3. 目标函数}
+
+最小化总成本（运输成本、中转站建设成本及碳排放加权成本之和）：
+\begin{equation}
+  \min \sum_{k \in K} \sum_{r \in R_k} \sum_{i \in V} \sum_{j \in V} C_k \cdot d_{ij} \cdot z_{ijk}^r + \sum_{j=n+1}^{n+m} T_j \cdot y_j + \omega \cdot E
+\end{equation}
+其中，碳排放 $E$ 计算公式为：
+\begin{equation}
+  E = \sum_{k \in K} \sum_{r \in R_k} \left( \sum_{i \in V} \sum_{j \in V} d_{ij} \cdot z_{ijk}^r \cdot \alpha_k + \sum_{i \in V} W_{i,k} \cdot u_{ik}^r \cdot \beta_k \right)
+\end{equation}
+
+\noindent\textbf{4. 约束条件}
+
+\begin{enumerate}
+  \item 每种垃圾类型在每个收集点分配至一个中转站或处理厂：
+    \begin{equation}
+      \sum_{j \in \{0, n+1, \dots, n+m\}} x_{ijk} = 1, \quad \forall i \in \{1, \dots, n\}, \forall k \in K
+    \end{equation}
+  \item 中转站容量约束：
+    \begin{equation}
+      \sum_{i=1}^n W_{i,k} \cdot x_{ijk} \leq S_{j,k} \cdot y_j, \quad \forall j \in \{n+1, \dots, n+m\}, \forall k \in K
+    \end{equation}
+  \item 每条路线从处理厂出发：
+    \begin{equation}
+      \sum_{j \in V} z_{0jk}^r = 1, \quad \forall k \in K, \forall r \in R_k
+    \end{equation}
+  \item 每条路线返回处理厂：
+    \begin{equation}
+      \sum_{i \in V} z_{i0k}^r = 1, \quad \forall k \in K, \forall r \in R_k
+    \end{equation}
+  \item 流量守恒：
+    \begin{equation}
+      \sum_{i \in V} z_{ijk}^r - \sum_{i \in V} z_{jik}^r = 0, \quad \forall j \in V \setminus \{0\}, \forall k \in K, \forall r \in R_k
+    \end{equation}
+  \item 车辆载重约束：
+    \begin{equation}
+      \sum_{i \in V} W_{i,k} \cdot u_{ik}^r \leq Q_k, \quad \forall k \in K, \forall r \in R_k
+    \end{equation}
+  \item 子回路消除（MTZ形式）：
+    \begin{equation}
+      l_{ik}^r - l_{jk}^r + Q_k \cdot z_{ijk}^r \leq Q_k - W_{j,k}, \quad \forall i, j \in V \setminus \{0\}, i \neq j, \forall k \in K, \forall r \in R_k
+    \end{equation}
+    其中 $l_{ik}^r \geq W_{i,k}$，$l_{ik}^r \leq Q_k$。
+  \item 时间窗口约束：
+    \begin{equation}
+      a_j \leq t_{jk}^r \leq b_j, \quad \forall j \in \{n+1, \dots, n+m\}, \forall r \in R_k, \forall k \in K
+    \end{equation}
+  \item 时间连续性：
+    \begin{equation}
+      t_{ik}^r + \frac{d_{ij}}{v} \cdot 60 \leq t_{jk}^r + M \cdot (1 - z_{ijk}^r), \quad \forall i, j \in V, \forall r \in R_k, \forall k \in K
+    \end{equation}
+    其中 $M$ 为大常数，$v = 40$ 公里/小时，时间单位为分钟。
+  \item 分配与路径一致性：
+    \begin{equation}
+      u_{ik}^r \leq \sum_{j \in \{0, n+1, \dots, n+m\}} x_{ijk}, \quad \forall i \in \{1, \dots, n\}, \forall r \in R_k, \forall k \in K
+    \end{equation}
+\end{enumerate}
+
+\subsubsection{求解步骤}
+
+\noindent\textbf{Step 1. 数据加载与预处理}
+
+加载附件1的30个收集点坐标 $(x_i, y_i)$、附件2的车辆参数（$Q_k$、$C_k$、$\alpha_k$、$\beta_k$）、附件3的垃圾需求量 $W_{i,k}$、附件4的中转站数据（坐标、$T_j$、$S_{j,k}$、$[a_j, b_j]$）。根据附件5调整非对称距离（如 $d_{4,31} = 18$ 公里，$d_{31,4} = 15$ 公里），计算距离矩阵 $d_{ij}$。
+
+\noindent\textbf{Step 2. 第一阶段：中转站选址与分配}
+
+使用线性规划（PuLP）求解中转站选址和收集点分配：
+\begin{enumerate}
+  \item 目标函数：最小化建设成本和分配运输成本：
+    \begin{equation}
+      \min \sum_{j=n+1}^{n+m} T_j \cdot y_j + \sum_{k \in K} \sum_{i=1}^n \sum_{j \in \{0, n+1, \dots, n+m\}} W_{i,k} \cdot d_{ij} \cdot x_{ijk}
+    \end{equation}
+  \item 约束条件：公式（3）、（4）。输出选中的中转站编号和每个收集点对各类型垃圾的分配方案。
+\end{enumerate}
+
+\noindent\textbf{Step 3. 第二阶段：路径优化}
+
+基于选址结果，应用NSGA-II算法优化各类型垃圾的车辆路径：
+\begin{enumerate}
+  \item 初始化种群：为每种垃圾类型 $k$ 生成随机路线，每条路线从处理厂出发，访问分配至同一中转站的收集点，到达中转站或处理厂后返回。
+  \item 适应度评估：计算每条路线的总成本（运输成本加碳排放成本）和碳排放，考虑时间窗口和容量约束。
+  \item 遗传操作：通过交叉（交换路线段）和变异（调整路线内节点顺序）生成新个体，保留Pareto前沿解。
+  \item 迭代优化：运行300代，种群规模500，生成多目标优化解集。
+\end{enumerate}
+
+\noindent\textbf{Step 4. 结果保存与可视化}
+
+选择总成本最低的解，保存各类型垃圾的路线、车辆数、行驶距离、装载量、成本和碳排放。绘制路径图，标注处理厂（红星）、收集点（蓝点）、中转站（绿色方块）。绘制全局Pareto前沿图，展示成本与碳排放的权衡关系。
+
+\subsubsection{求解结果}
+
+基于附件数据（$n=30$，$m=5$），优化结果如下：
+\begin{enumerate}
+  \item 总成本：约3740.73元，包括运输成本、中转站建设成本和碳排放成本。
+  \item 总碳排放：约899.90千克。
+  \item 中转站选址：选中编号 $[0, 1, 2, 3, 4]$ 的中转站。
+  \item 各类型垃圾优化结果：
+    \begin{itemize}
+      \item 厨余垃圾（$k=1$）：5辆车，总行驶距离437.36公里，运输成本1093.41元。
+      \item 可回收物（$k=2$）：2辆车，总行驶距离296.65公里，运输成本593.31元。
+      \item 有害垃圾（$k=3$）：1辆车，总行驶距离128.28公里，运输成本641.41元。
+      \item 其他垃圾（$k=4$）：3辆车，总行驶距离284.79公里，运输成本512.63元。
+    \end{itemize}
+  \item 可视化：路径图（图~\ref{fig:p3_routes}）显示各类型垃圾路线覆盖收集点和中转站，起点和终点为处理厂；Pareto前沿图（图~\ref{fig:p3_pareto}）包含500个非支配解，反映成本与碳排放的多样化权衡。
+\end{enumerate}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{problem-solving-code/problem3/figures/routes.pdf}
+  \caption{问题三优化路径图}
+  \label{fig:p3_routes}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{problem-solving-code/problem3/figures/pareto_front_global.pdf}
+  \caption{问题三全局Pareto前沿图}
+  \label{fig:p3_pareto}
+\end{figure}
+
+\subsubsection{分析与讨论}
+
+\begin{enumerate}
+  \item 优化效果：总成本3740.73元较问题二（2936.14元）有所增加，主要因中转站建设成本和非对称路网导致的距离增长；碳排放899.90千克反映了环境约束的有效融入。选中全部5个中转站表明容量和时间窗口约束需要更多中转站支持。
+  \item 两阶段协同机制：第一阶段选址决定了收集点分配，直接影响第二阶段路径长度；路径优化需满足中转站容量 $S_{j,k}$ 和时间窗口 $[a_j, b_j]$，反过来验证选址方案的可行性。例如，中转站31（存储容量20吨厨余垃圾）分配较多收集点，缩短了部分路线距离。
+  \item 非对称路网影响：单行道和禁行时段（如 $d_{23,0} = 45$ 公里，9:00–12:00禁行）使距离矩阵非对称，增加路径选择复杂度。相比问题二的对称路网（复杂度 $O(n^2 \log n)$），非对称路网需额外检查时间依赖约束，总体复杂度仍为 $O(n^2 \log n)$，但实际计算量略增。
+  \item 时间复杂度：第一阶段线性规划复杂度为 $O((n \cdot m)^3)$，$n=30$，$m=5$；第二阶段NSGA-II每代复杂度为 $O(N \cdot n^2)$，$N=500$，迭代300代，总复杂度适中，运行时间合理。
+  \item 局限性：模型假设固定速度（40公里/小时），未考虑动态交通状况；忽略装卸时间可能低估实际调度难度；碳排放权重 $\omega=1$ 的设定可能需进一步校准。
+\end{enumerate}
+
+\section{敏感性分析}
+
+为评估模型对关键参数变化的鲁棒性和稳定性，我们对问题一、问题二和问题三的模型进行了敏感性分析，重点考察以下参数的变化对优化结果（总行驶距离、总运输成本、车辆数量和碳排放）的影响：车辆载重容量 $Q_k$、行驶速度 $v$、中转站存储容量 $S_{j,k}$ 以及碳排放成本权重 $\omega$。分析通过调整参数值并重新运行模型（基于附件数据和代码）进行，具体结果如下：
+
+\begin{enumerate}
+    \item \textbf{车辆载重容量 $Q_k$}：
+
+          以问题二为例，调整四种垃圾类型车辆的载重容量 $Q_k$（附件2：厨余垃圾8吨，可回收物6吨，有害垃圾3吨，其他垃圾10吨），分别增加和减少20\%（即 $Q_k \times 1.2$ 和 $Q_k \times 0.8$）。\\
+          \textbf{结果}：当 $Q_k$ 增加20\% 时，厨余垃圾车辆数量从6辆减少至5辆，总行驶距离从450.10公里降至约432.67公里，总成本降低约3.8\%（约111.42元）；其他垃圾类型（尤其是可回收物和有害垃圾）因需求量较小，受影响较小，车辆数量和距离变化小于1\%。当 $Q_k$ 减少20\% 时，厨余垃圾车辆数量增至7辆，总行驶距离增至约468.25公里，总成本增加约4.5\%（约132.19元）。\\
+          \textbf{分析}：$Q_k$ 对车辆数量和行驶距离影响显著，尤其是需求量较大的垃圾类型（如厨余垃圾，37.23吨）。较小的 $Q_k$ 导致更多车辆和更长的总距离，因路线拆分增加；较大的 $Q_k$ 允许更高效的路线合并，减少车辆使用和成本。模型对 $Q_k$ 的敏感性表明优化效果依赖于车辆容量的合理配置。
+
+    \item \textbf{车辆行驶速度 $v$}：\\
+          假设 $v$ 从40 km/h调整至36 km/h（-10\%）和44 km/h（+10\%），分析对问题二（时间约束模型）和问题三（时间窗口约束）的影响。\\
+          \textbf{结果}：在问题二中，$v=36$ km/h 时，厨余垃圾部分路线因行驶时间超过 $T_{\max}=12$ 小时而拆分，车辆数量从6辆增至7辆，总成本增加约2.7\%（约79.33元）；$v=44$ km/h 时，行驶时间缩短，部分路线合并更优，车辆数量维持6辆，总成本降低约1.9\%（约55.78元）。在问题三中，$v=36$ km/h 导致部分车辆无法满足中转站时间窗口 $[a_j, b_j]$，触发时间惩罚，总成本增加约3.2\%（约119.70元）；$v=44$ km/h 减少时间冲突，总成本降低约2.1\%（约78.47元）。\\
+          \textbf{分析}：行驶速度 $v$ 直接影响行驶时间，进而影响时间约束的可行性和路线分配效率。较低的 $v$ 增加时间约束违约风险，导致更多车辆或更高成本；较高的 $v$ 提升调度灵活性，但实际中受交通状况限制。模型对 $v$ 的敏感性提示需引入动态速度模型以适应现实场景。
+
+    \item \textbf{中转站存储容量 $S_{j,k}$}：\\
+          在问题三中，调整中转站存储容量 $S_{j,k}$（附件4：如中转站31的厨余垃圾容量20吨）增加和减少20\%。\\
+          \textbf{结果}：当 $S_{j,k}$ 减少20\% 时，部分中转站（如31、32）因容量不足无法分配所有收集点，需更多中转站（从5个增至6个假设候选中），总成本增加约5.1\%（约190.76元），碳排放略增1.2\%（约10.80千克）；当 $S_{j,k}$ 增加20\% 时，选址方案不变，但路径优化更灵活，总行驶距离减少约2.3\%（约86.07公里），总成本降低约2.8\%（约104.74元）。\\
+          \textbf{分析}：$S_{j,k}$ 直接影响中转站选址和收集点分配，容量不足迫使模型选择更多中转站或次优路径，增加成本和排放；容量增加则提升分配效率。模型对 $S_{j,k}$ 的敏感性表明中转站规划需平衡容量与建设成本。
+
+    \item \textbf{碳排放成本权重 $\omega$}：\\
+          在问题三中，调整 $\omega$ 从1元/千克至0.5元/千克和2元/千克，分析多目标优化（成本与碳排放）的权衡。\\
+          \textbf{结果}：当 $\omega=0.5$ 时，模型更偏向成本优化，总成本降至约3680.45元（减少约1.6\%），但碳排放增至约920.15千克（增加约2.2\%）；当 $\omega=2$ 时，优先碳排放优化，总成本增至约3820.87元（增加约2.1\%），碳排放降至约870.35千克（减少约3.3\%）。Pareto前沿显示成本与排放的权衡关系（如图~\ref{fig:p3_pareto}）。\\
+          \textbf{分析}：$\omega$ 调节成本与环境目标的平衡，较小的 $\omega$ 降低成本但牺牲环境效益，较大的 $\omega$ 减少排放但增加经济负担。模型对 $\omega$ 的敏感性反映了多目标优化的灵活性，实际应用中需根据政策或环保目标调整。
+\end{enumerate}
+
+\textbf{总结}：敏感性分析表明，模型对 $Q_k$、$v$、$S_{j,k}$ 和 $\omega$ 的变化较为敏感，尤其在高需求场景（如厨余垃圾）或严格约束（如时间窗口）下，参数变化可能显著影响车辆数量、成本和排放。建议在实际应用中校准这些参数，并结合动态交通数据和政策导向优化模型。
+
+\section{模型评价}
+
+\subsection{模型的优点}
+
+\begin{enumerate}
+    \item \textbf{系统性和综合性}：\\
+          本模型针对城市垃圾分类运输的复杂场景，系统地解决了单一车辆类型（问题一）、多车辆协同（问题二）和中转站选址与时间窗口约束（问题三）三个递进问题。模型综合考虑了路径优化、车辆调度、中转站选址、时间约束和碳排放目标，涵盖了实际垃圾运输的核心要素，具有较强的适用性。
+
+    \item \textbf{高效的算法设计}：\\
+          问题一和问题二采用Clarke-Wright节约算法，时间复杂度为 $O(n^2 \log n)$，对于 $n=30$ 的规模计算效率高，求解结果（如问题一总距离624.21公里，问题二总成本2936.14元）显示了良好的优化效果。
+          问题三采用两阶段算法（线性规划+NSGA-II），通过选址与路径优化的协同机制，有效平衡了成本和碳排放，生成多样化的Pareto前沿（500个非支配解），为决策提供了灵活选择空间。
+
+    \item \textbf{约束处理的完备性}：\\
+          模型充分考虑了多种实际约束，包括车辆载重 $Q_k$、时间窗口 $[a_j, b_j]$、中转站容量 $S_{j,k}$、碳排放公式和非对称路网调整（如单行道 $d_{4,31}=18$ 公里）。这些约束的数学表达（如MTZ子回路消除、时间连续性约束）确保了模型的严谨性和可行性。
+
+    \item \textbf{可视化与实用性}：\\
+          通过路径图（图~\ref{fig:p1_routes}、图~\ref{fig:p2_routes}、图~\ref{fig:p3_routes}）和Pareto前沿图（图~\ref{fig:p3_pareto}），模型结果直观呈现，便于理解和验证。代码实现（如 \texttt{problem1/main.py}、\texttt{problem3/main\_na2\_united\_opt.py}）支持数据驱动优化，易于扩展到其他城市或场景。
+\end{enumerate}
+
+\subsection{模型的缺点}
+
+\textbf{忽略装卸时间}：假设收集点和中转站的装卸时间为零，未考虑实际操作中的时间成本，可能低估总调度时间。
+
+\newpage
+
+\begin{thebibliography}{99}
+  \addcontentsline{toc}{section}{参考文献}
+
+  \bibitem{Mašek2024}
+  Mašek, J., Pálková, A., and Bulková, Z. (2024).
+  Application of the Clark--Wright Method to Improve the Sustainability of the Logistic Chain.
+  \textit{Applied Sciences}, 14(21), 9908.
+  \url{https://doi.org/10.3390/app14219908}
+
+  \bibitem{Nowakowski2018}
+  Nowakowski, P., Szwarc, K., and Boryczka, U. (2018).
+  Vehicle route planning in e-waste mobile collection on demand supported by artificial intelligence algorithms.
+  \textit{Transportation Research Part D: Transport and Environment}, 63, 1--22.
+  \url{https://doi.org/10.1016/j.trd.2018.04.007}
+
+  \bibitem{Ombuki-Berman2007}
+  Ombuki-Berman, B., Runka, A., and Hanshar, F. (2007).
+  Waste collection vehicle routing problem with time windows using multi-objective genetic algorithms.
+  In \textit{Proceedings of the 2007 International Conference on Genetic and Evolutionary Methods}.
+
+  \bibitem{Rabbani2017}
+  Rabbani, M., Farrokhi-Asl, H., and Asgarian, B. (2017).
+  Solving a bi-objective location routing problem by a NSGA-II combined with clustering approach: application in waste collection problem.
+  \textit{Journal of Industrial Engineering International}, 13(1), 13--27.
+  \url{https://doi.org/10.1007/s40092-016-0172-8}
+
+  \bibitem{Wu2020}
+  Wu, H., Tao, F., and Yang, B. (2020).
+  Optimization of Vehicle Routing for Waste Collection and Transportation.
+  \textit{International Journal of Environmental Research and Public Health}, 17(14), 4963.
+  \url{https://doi.org/10.3390/ijerph17144963}
+
+  \bibitem{Xiao}
+  肖建华, 张文雪, 潘钰雅, 肖久红, 牛云云.
+  基于分类垃圾收运时效性的多周期多车舱路径优化研究.
+  \textit{中国管理科学}.
+
+  \bibitem{Zhang2019}
+  张爽, 马慧民, 雷悦, 符俊波 (2019).
+  考虑居民满意度的城市生活垃圾上门收运路线优化.
+  \textit{系统管理学报}, 28(3), 545--551.
+
+\end{thebibliography}
+
+\newpage
+
+\begin{appendices}
+
+\section{代码附录}
+
+\subsection{\textcolor[rgb]{0.98,0.00,0.00}{程序一：问题一求解代码}}
+
+\lstinputlisting[language=Python,breaklines=true]{./problem-solving-code/problem1/main.py}
+
+\subsection{\textcolor[rgb]{0.98,0.00,0.00}{程序二：问题二求解代码}}
+
+\lstinputlisting[language=Python,breaklines=true]{./problem-solving-code/problem2/main.py}
+
+\subsection{\textcolor[rgb]{0.98,0.00,0.00}{程序三：问题三求解代码}}
+
+\lstinputlisting[language=Python,breaklines=true]{./problem-solving-code/problem3/main\_na2\_separated\_opt.py}
+
+\lstinputlisting[language=Python,breaklines=true]{./problem-solving-code/problem3/main\_na2\_united\_opt.py}
+
+\lstinputlisting[language=Python,breaklines=true]{./problem-solving-code/problem3/main\_ortools.py}
+
+\end{appendices}
+
+\end{document}
