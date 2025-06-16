@@ -40,11 +40,39 @@ class ModelType(str, Enum):
     MULTI = "multi"  # 多语言检测模型
 
 
-# 模型配置字典，映射模型类型到对应的模型路径
-MODEL_CONFIGS = {
-    ModelType.ENGLISH: ("yuchuantian/AIGC_detector_env2", "AIGC_text_detector/AIGC_en_model"),
-    ModelType.CHINESE: ("yuchuantian/AIGC_detector_zhv2", "AIGC_text_detector/AIGC_zh_model"),
-    ModelType.DESKLIB: ("desklib/ai-text-detector-v1.01", "desklib_detector/desklib_model"),
+# 配置字典，集中所有可调参数并添加注释
+CONFIG = {
+    # 模型配置：映射模型类型到对应的在线模型ID和本地存储路径
+    "MODEL_CONFIGS": {
+        ModelType.ENGLISH: ("yuchuantian/AIGC_detector_env2", "AIGC_text_detector/AIGC_en_model"),
+        ModelType.CHINESE: ("yuchuantian/AIGC_detector_zhv2", "AIGC_text_detector/AIGC_zh_model"),
+        ModelType.DESKLIB: ("desklib/ai-text-detector-v1.01", "desklib_detector/desklib_model"),
+    },
+    # 阈值配置：用于判断AI生成内容的概率阈值
+    "THRESHOLDS": {
+        "en": [0.60867064, 0.85145506],  # 英文模型的低和高阈值
+        "zh-cn": [0.60867064, 0.85145506],  # 中文模型的低和高阈值
+        "desklib_zh": 0.95,  # 中文Desklib模型的单独阈值
+    },
+    # 序列长度配置：模型处理的最大文本长度
+    "MAX_SEQ_LEN": {
+        "default": 512,  # 默认最大序列长度（AIGCDetector和多模型）
+        "pipeline_en": 500,  # 英文pipeline模型的最大序列长度
+        "pipeline_zh": 500,  # 中文pipeline模型的最大序列长度
+        "desklib": 768,  # Desklib模型的最大序列长度
+        "chunk_factor": 0.7,  # 分块时使用的长度比例因子
+        "safe_chunk_factor": 0.8,  # 安全分块时的长度比例因子
+        "sub_chunk_size": 0.5,  # 长文本分块时的子块大小比例
+        "short_chunk_len": 200,  # 错误处理时缩短的块长度
+    },
+    # 语言检测配置：判断文本语言的参数
+    "CHINESE_RATIO": 0.1,  # 中文字符占比超过此值视为中文文本
+    # 默认检测配置：命令行未指定时的默认参数
+    "DEFAULT_MODEL": ModelType.MULTI,  # 默认使用的模型类型
+    "DEFAULT_THRESHOLD": 0.7,  # 默认的AI内容判定阈值
+    # 目录配置：输入和输出目录
+    "DETECT_DIR": "to_detect",  # 默认检测文件所在的目录
+    "RES_DETECT_DIR": "res_detect",  # 检测结果和报告的存储目录
 }
 
 # 初始化Typer应用，用于命令行接口
@@ -104,10 +132,7 @@ class AIGCDetector:
         self.models = {}  # 存储加载的模型
         self.tokenizers = {}  # 存储对应的分词器
         self.id2labels = {}  # 模型标签映射
-        self.thresholds = {
-            "en": [0.60867064, 0.85145506],  # 英文模型阈值
-            "zh-cn": [0.60867064, 0.85145506],  # 中文模型阈值
-        }
+        self.thresholds = CONFIG["THRESHOLDS"]  # 从CONFIG加载阈值
         self._init_models()  # 初始化所有模型
 
     def _init_models(self):
@@ -132,7 +157,7 @@ class AIGCDetector:
         """
         初始化中文AIGC检测模型，从本地或远程加载
         """
-        model_id, local_path = MODEL_CONFIGS[ModelType.CHINESE]
+        model_id, local_path = CONFIG["MODEL_CONFIGS"][ModelType.CHINESE]
         try:
             if os.path.exists(local_path):
                 self.models["zh"] = BertForSequenceClassification.from_pretrained(local_path)
@@ -154,7 +179,7 @@ class AIGCDetector:
         """
         初始化英文AIGC检测模型，从本地或远程加载
         """
-        model_id, local_path = MODEL_CONFIGS[ModelType.ENGLISH]
+        model_id, local_path = CONFIG["MODEL_CONFIGS"][ModelType.ENGLISH]
         try:
             if os.path.exists(local_path):
                 self.models["en"] = RobertaForSequenceClassification.from_pretrained(local_path)
@@ -176,7 +201,7 @@ class AIGCDetector:
         """
         初始化Desklib检测模型，从本地或远程加载
         """
-        model_id, local_path = MODEL_CONFIGS[ModelType.DESKLIB]
+        model_id, local_path = CONFIG["MODEL_CONFIGS"][ModelType.DESKLIB]
         try:
             if os.path.exists(local_path):
                 self.tokenizers["desklib"] = AutoTokenizer.from_pretrained(local_path)
@@ -208,7 +233,12 @@ class AIGCDetector:
         id2label = self.id2labels.get(lang, ["Human", "AI"])
         model.eval()
         with torch.no_grad():
-            inputs = tokenizer(text, return_tensors="pt", max_length=512, truncation=True)
+            inputs = tokenizer(
+                text,
+                return_tensors="pt",
+                max_length=CONFIG["MAX_SEQ_LEN"]["default"],
+                truncation=True,
+            )
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             outputs = model(**inputs)
             scores = outputs.logits[0].softmax(0).cpu().numpy()
@@ -226,7 +256,11 @@ class AIGCDetector:
         tokenizer = self.tokenizers["desklib"]
         model = self.models["desklib"]
         encoded = tokenizer(
-            text, padding="max_length", truncation=True, max_length=768, return_tensors="pt"
+            text,
+            padding="max_length",
+            truncation=True,
+            max_length=CONFIG["MAX_SEQ_LEN"]["desklib"],
+            return_tensors="pt",
         )
         input_ids = encoded["input_ids"].to(self.device)
         attention_mask = encoded["attention_mask"].to(self.device)
@@ -297,7 +331,9 @@ class AIGCDetector:
             desklib_score = self._desklib_predict(text)
             logger.info(f"Desklib模型得分: {desklib_score}")
             thresholds = self.thresholds["zh-cn"]
-            return self._calculate_score([aigc_score, desklib_score], [thresholds[0], 0.95])
+            return self._calculate_score(
+                [aigc_score, desklib_score], [thresholds[0], CONFIG["THRESHOLDS"]["desklib_zh"]]
+            )
         else:
             aigc_en_score = self._aigc_predict(text, "en")
             aigc_zh_score = self._aigc_predict(text, "zh")
@@ -309,7 +345,10 @@ class AIGCDetector:
                 )
             else:
                 thresholds = self.thresholds["zh-cn"]
-                return self._calculate_score([aigc_zh_score, desklib_score], [thresholds[0], 0.95])
+                return self._calculate_score(
+                    [aigc_zh_score, desklib_score],
+                    [thresholds[0], CONFIG["THRESHOLDS"]["desklib_zh"]],
+                )
 
 
 def load_model(model_type: ModelType):
@@ -326,7 +365,7 @@ def load_model(model_type: ModelType):
             console.print(f"[bold red]多模型检测器初始化失败: {str(e)}[/bold red]")
             console.print("[yellow]尝试使用单一模型回退...[/yellow]")
             return load_model(ModelType.CHINESE)
-    model_id, local_path = MODEL_CONFIGS[model_type]
+    model_id, local_path = CONFIG["MODEL_CONFIGS"][model_type]
     local_model_exists = os.path.exists(local_path)
     try:
         console.print(f"正在加载模型 [bold]{model_id}[/bold]...")
@@ -406,56 +445,68 @@ def analyze_text(text: str, detector) -> dict:
     if not text.strip():
         return {"label": "UNKNOWN", "score": 0.0}
     try:
-        # 判断文本语言（中文占比超过10%视为中文）
+        # 判断文本语言（中文占比超过CONFIG中的比例视为中文）
         chinese_chars = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
-        is_chinese = chinese_chars / len(text) > 0.1 if text else False
+        is_chinese = chinese_chars / len(text) > CONFIG["CHINESE_RATIO"] if text else False
         language = "zh-cn" if is_chinese else "en"
         is_aigc_detector = isinstance(detector, AIGCDetector)
         # 根据模型类型设置最大序列长度
-        max_seq_len = 512
+        max_seq_len = CONFIG["MAX_SEQ_LEN"]["default"]
         if is_aigc_detector:
             if language == "zh-cn" and "zh" in detector.tokenizers:
-                max_seq_len = 512
+                max_seq_len = CONFIG["MAX_SEQ_LEN"]["default"]
             elif language == "en" and "en" in detector.tokenizers:
-                max_seq_len = 512
+                max_seq_len = CONFIG["MAX_SEQ_LEN"]["default"]
             elif "desklib" in detector.tokenizers:
-                max_seq_len = 512
+                max_seq_len = CONFIG["MAX_SEQ_LEN"]["default"]
         else:
             model_id = detector.model.name_or_path
             if "AIGC_en_model" in model_id or "AIGC_detector_env2" in model_id:
-                max_seq_len = 500
+                max_seq_len = CONFIG["MAX_SEQ_LEN"]["pipeline_en"]
             else:
-                max_seq_len = 500
+                max_seq_len = CONFIG["MAX_SEQ_LEN"]["pipeline_zh"]
         # 处理长文本分块
-        if len(text) > max_seq_len * 0.7:
+        if len(text) > max_seq_len * CONFIG["MAX_SEQ_LEN"]["chunk_factor"]:
             paragraphs = text.split("\n")
             chunks = []
             current_chunk = ""
             for para in paragraphs:
                 if not para.strip():
                     continue
-                if len(current_chunk) + len(para) < max_seq_len * 0.7:
+                if (
+                    len(current_chunk) + len(para)
+                    < max_seq_len * CONFIG["MAX_SEQ_LEN"]["chunk_factor"]
+                ):
                     current_chunk += para + "\n"
                 else:
                     if current_chunk:
                         chunks.append(current_chunk.strip())
                         current_chunk = ""
-                    if len(para) > max_seq_len * 0.7:
+                    if len(para) > max_seq_len * CONFIG["MAX_SEQ_LEN"]["chunk_factor"]:
                         sentences = para.split(". ")
                         temp_chunk = ""
                         for sentence in sentences:
                             if not sentence.strip():
                                 continue
-                            if len(temp_chunk) + len(sentence) < max_seq_len * 0.7:
+                            if (
+                                len(temp_chunk) + len(sentence)
+                                < max_seq_len * CONFIG["MAX_SEQ_LEN"]["chunk_factor"]
+                            ):
                                 temp_chunk += sentence + ". "
                             else:
                                 if temp_chunk:
                                     chunks.append(temp_chunk.strip())
-                                if len(sentence) > max_seq_len * 0.7:
+                                if (
+                                    len(sentence)
+                                    > max_seq_len * CONFIG["MAX_SEQ_LEN"]["chunk_factor"]
+                                ):
                                     words = sentence.split()
                                     word_chunk = ""
                                     for word in words:
-                                        if len(word_chunk) + len(word) < max_seq_len * 0.7:
+                                        if (
+                                            len(word_chunk) + len(word)
+                                            < max_seq_len * CONFIG["MAX_SEQ_LEN"]["chunk_factor"]
+                                        ):
                                             word_chunk += word + " "
                                         else:
                                             if word_chunk:
@@ -472,7 +523,7 @@ def analyze_text(text: str, detector) -> dict:
             if current_chunk:
                 chunks.append(current_chunk.strip())
             if not chunks:
-                chunk_size = int(max_seq_len * 0.5)
+                chunk_size = int(max_seq_len * CONFIG["MAX_SEQ_LEN"]["sub_chunk_size"])
                 chunks = []
                 for i in range(0, len(text), chunk_size):
                     chunk = text[i : i + chunk_size]
@@ -481,10 +532,14 @@ def analyze_text(text: str, detector) -> dict:
             # 确保分块大小安全
             safe_chunks = []
             for chunk in chunks:
-                if len(chunk) > max_seq_len * 0.8:
+                if len(chunk) > max_seq_len * CONFIG["MAX_SEQ_LEN"]["safe_chunk_factor"]:
                     sub_chunks = [
-                        chunk[i : i + int(max_seq_len * 0.5)]
-                        for i in range(0, len(chunk), int(max_seq_len * 0.5))
+                        chunk[i : i + int(max_seq_len * CONFIG["MAX_SEQ_LEN"]["sub_chunk_size"])]
+                        for i in range(
+                            0,
+                            len(chunk),
+                            int(max_seq_len * CONFIG["MAX_SEQ_LEN"]["sub_chunk_size"]),
+                        )
                     ]
                     safe_chunks.extend([sc for sc in sub_chunks if sc.strip()])
                 else:
@@ -507,9 +562,9 @@ def analyze_text(text: str, detector) -> dict:
                     results.append(chunk_result)
                 except Exception as e:
                     logger.warning(f"处理文本块时发生错误: {str(e)}")
-                    if len(chunk) > 200:
+                    if len(chunk) > CONFIG["MAX_SEQ_LEN"]["short_chunk_len"]:
                         try:
-                            shorter_chunk = chunk[:200]
+                            shorter_chunk = chunk[: CONFIG["MAX_SEQ_LEN"]["short_chunk_len"]]
                             if is_aigc_detector:
                                 short_result = detector.detect(shorter_chunk, language)
                             else:
@@ -581,9 +636,14 @@ def generate_report(file_name: str, result: dict, status: str, output_dir: str):
 @app.command()
 def detect(
     file_path: List[str] = typer.Argument(..., help="文件路径，支持.txt和.docx格式"),
-    model_type: ModelType = typer.Option(ModelType.MULTI, "--model", "-m", help="AIGC检测模型类型"),
+    model_type: ModelType = typer.Option(
+        CONFIG["DEFAULT_MODEL"], "--model", "-m", help="AIGC检测模型类型"
+    ),
     threshold: float = typer.Option(
-        0.7, "--threshold", "-t", help="AI内容判定阈值，大于此值则判定为AI生成"
+        CONFIG["DEFAULT_THRESHOLD"],
+        "--threshold",
+        "-t",
+        help="AI内容判定阈值，大于此值则判定为AI生成",
     ),
 ):
     try:
@@ -601,7 +661,7 @@ def detect(
     table.add_column("状态", style="magenta")
 
     # 创建 res_detect 目录
-    res_detect_dir = os.path.join(os.getcwd(), "res_detect")
+    res_detect_dir = os.path.join(os.getcwd(), CONFIG["RES_DETECT_DIR"])
     os.makedirs(res_detect_dir, exist_ok=True)
 
     # 遍历输入文件进行检测
@@ -675,17 +735,19 @@ def main():
         app()
     else:
         # 默认检测to_detect目录中的文件
-        detect_dir = os.path.join(os.getcwd(), "to_detect")
+        detect_dir = os.path.join(os.getcwd(), CONFIG["DETECT_DIR"])
         os.makedirs(detect_dir, exist_ok=True)
         default_files = glob.glob(os.path.join(detect_dir, "*.txt")) + glob.glob(
             os.path.join(detect_dir, "*.docx")
         )
         default_files = [os.path.relpath(f, os.getcwd()) for f in default_files]
         if not default_files:
-            console.print("[bold red]to_detect 目录中未找到任何 .txt 或 .docx 文件！[/bold red]")
+            console.print(
+                f"[bold red]{CONFIG['DETECT_DIR']} 目录中未找到任何 .txt 或 .docx 文件！[/bold red]"
+            )
             raise typer.Exit(code=1)
-        default_model = ModelType.MULTI
-        default_threshold = 0.7
+        default_model = CONFIG["DEFAULT_MODEL"]
+        default_threshold = CONFIG["DEFAULT_THRESHOLD"]
         console.print("[bold blue]运行 AIGC 检测工具...[/bold blue]")
         console.print(f"检测文件: {default_files}")
         detect(file_path=default_files, model_type=default_model, threshold=default_threshold)
